@@ -1,0 +1,6 @@
+version: '2'
+services:
+  yacy_grid_parser:
+    build: .
+    ports:
+      - 8500:8500
