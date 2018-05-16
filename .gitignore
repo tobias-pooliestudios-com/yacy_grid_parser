@@ -5,6 +5,7 @@
 #################################
 nbproject
 .idea
+out
 .buildpath
 .project
 .settings
