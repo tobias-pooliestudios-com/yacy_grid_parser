@@ -45,3 +45,5 @@ target/
 /class/
 .DS_Store
 .settings
+.idea
+out
