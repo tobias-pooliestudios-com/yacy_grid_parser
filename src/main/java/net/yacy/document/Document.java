@@ -49,12 +49,14 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.json.JSONObject;
+
 import net.yacy.cora.date.ISO8601Formatter;
 import net.yacy.cora.document.encoding.UTF8;
 import net.yacy.cora.lod.vocabulary.Tagging;
 import net.yacy.cora.util.ByteBuffer;
 
-import net.yacy.document.parser.html.ContentScraper;
+import net.yacy.document.parser.html.Scraper;
 import net.yacy.document.parser.html.IconEntry;
 import net.yacy.document.parser.html.ImageEntry;
 import net.yacy.grid.mcp.Data;
@@ -98,6 +100,7 @@ public class Document {
     private final Map<String, Set<String>> generic_facets; // a map from vocabulary names to the set of tags for that vocabulary which apply for this document
     private final Date lastModified; // creation or last modification date of the source document
     private int crawldepth;
+    private JSONObject ld;
 
     public Document(final MultiProtocolURL location,
                     final String mimeType,
@@ -154,8 +157,13 @@ public class Document {
         this.lastModified = lastModified == null ? new Date() : lastModified;
         this.crawldepth = 999; // unknown yet
         this.scraperObject = null; // will be set by setScraperObject()
+        this.ld = new JSONObject(true);
     }
 
+    public JSONObject ld() {
+        return this.ld;
+    }
+    
     /**
      * Get the content domain of a document. This tries to get the content domain from the mime type
      * and if this fails it uses alternatively the content domain from the file extension.
@@ -193,9 +201,9 @@ public class Document {
      */
     public void setScraperObject(Object scraper) {
         if (this.scraperObject != null) {
-            if (this.scraperObject instanceof ContentScraper) {
+            if (this.scraperObject instanceof Scraper) {
                 // support garbage collection
-                ((ContentScraper) this.scraperObject).close();
+                ((Scraper) this.scraperObject).close();
             }
             this.scraperObject = null;
         }
@@ -992,8 +1000,8 @@ dc_rights
         // clean up parser data
         for (final Document doc: docs) {
             Object scraper = doc.getScraperObject();
-            if (scraper instanceof ContentScraper) {
-                final ContentScraper html = (ContentScraper) scraper;
+            if (scraper instanceof Scraper) {
+                final Scraper html = (Scraper) scraper;
                 html.close();
                 doc.scraperObject = null;
             }
@@ -1041,8 +1049,8 @@ dc_rights
                 }
             }
             final Object scraper = d.getScraperObject();
-            if (scraper instanceof ContentScraper) {
-                final ContentScraper html = (ContentScraper) scraper;
+            if (scraper instanceof Scraper) {
+                final Scraper html = (Scraper) scraper;
                 String refresh = html.getRefreshPath();
                 if (refresh != null && refresh.length() > 0) try {result.put(new AnchorURL(refresh), "refresh");} catch (final MalformedURLException e) {}
                 AnchorURL canonical = html.getCanonical();

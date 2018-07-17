@@ -46,7 +46,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -799,7 +798,7 @@ public class Domains {
     
 	final private static ExecutorService getByNameService = Executors
 			.newCachedThreadPool(new NamePrefixThreadFactory("InetAddress.getByName"));
-
+	
 	final private static TimeLimiter timeLimiter = SimpleTimeLimiter.create(getByNameService);
 
     /**

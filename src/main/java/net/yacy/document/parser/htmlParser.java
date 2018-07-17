@@ -43,14 +43,12 @@ import net.yacy.document.AbstractParser;
 import net.yacy.document.Document;
 import net.yacy.document.Parser;
 import net.yacy.document.VocabularyScraper;
-import net.yacy.document.parser.html.ContentScraper;
+import net.yacy.document.parser.html.Scraper;
 import net.yacy.document.parser.html.ImageEntry;
-import net.yacy.document.parser.html.ScraperInputStream;
-import net.yacy.document.parser.html.TransformerWriter;
+import net.yacy.document.parser.html.Tokenizer;
 import net.yacy.kelondro.util.FileUtils;
 
 import com.ibm.icu.text.CharsetDetector;
-
 
 public class htmlParser extends AbstractParser implements Parser {
 
@@ -101,7 +99,7 @@ public class htmlParser extends AbstractParser implements Parser {
         try {
             // first get a document from the parsed html
             Charset[] detectedcharsetcontainer = new Charset[]{null};
-            ContentScraper scraper = parseToScraper(location, documentCharset, vocscraper, detectedcharsetcontainer, timezoneOffset, sourceStream, maxLinks);
+            Scraper scraper = parseToScraper(location, documentCharset, vocscraper, detectedcharsetcontainer, timezoneOffset, sourceStream, maxLinks);
             // parseToScraper also detects/corrects/sets charset from html content tag
             final Document document = transformScraper(location, mimeType, detectedcharsetcontainer[0].name(), scraper);
             return new Document[]{document};
@@ -118,7 +116,7 @@ public class htmlParser extends AbstractParser implements Parser {
      * @param scraper
      * @return a Document instance
      */
-    private Document transformScraper(final MultiProtocolURL location, final String mimeType, final String charSet, final ContentScraper scraper) {
+    private Document transformScraper(final MultiProtocolURL location, final String mimeType, final String charSet, final Scraper scraper) {
         final String[] sections = new String[
                  scraper.getHeadlines(1).length +
                  scraper.getHeadlines(2).length +
@@ -155,11 +153,11 @@ public class htmlParser extends AbstractParser implements Parser {
                 scraper.getDate());
         ppd.setScraperObject(scraper);
         ppd.setIcons(scraper.getIcons());
-        
+        ppd.ld().putAll(scraper.getLd().getJSON());
         return ppd;
     }
 
-    public static ContentScraper parseToScraper(final MultiProtocolURL location, final String documentCharset, final VocabularyScraper vocabularyScraper, final int timezoneOffset, final String input, final int maxLinks) throws IOException {
+    public static Scraper parseToScraper(final MultiProtocolURL location, final String documentCharset, final VocabularyScraper vocabularyScraper, final int timezoneOffset, final String input, final int maxLinks) throws IOException {
         Charset[] detectedcharsetcontainer = new Charset[]{null};
         InputStream sourceStream;
         try {
@@ -167,7 +165,7 @@ public class htmlParser extends AbstractParser implements Parser {
         } catch (UnsupportedEncodingException e) {
             sourceStream = new ByteArrayInputStream(UTF8.getBytes(input));
         }
-        ContentScraper scraper; // for this static methode no need to init local this.scraperObject
+        Scraper scraper; // for this static methode no need to init local this.scraperObject
         try {
             scraper = parseToScraper(location, documentCharset, vocabularyScraper, detectedcharsetcontainer, timezoneOffset, sourceStream, maxLinks);
         } catch (Failure e) {
@@ -176,7 +174,7 @@ public class htmlParser extends AbstractParser implements Parser {
         return scraper;
     }
     
-    public static ContentScraper parseToScraper(
+    public static Scraper parseToScraper(
             final MultiProtocolURL location,
             final String documentCharset,
             final VocabularyScraper vocabularyScraper,
@@ -191,27 +189,6 @@ public class htmlParser extends AbstractParser implements Parser {
         // ah, we are lucky, we got a character-encoding via HTTP-header
         if (documentCharset != null) {
             charset = patchCharsetEncoding(documentCharset);
-        }
-
-        // try to find a meta-tag
-        String scrapedCharset = null;
-        ScraperInputStream htmlFilter = null;
-        try {
-            htmlFilter = new ScraperInputStream(sourceStream, documentCharset, vocabularyScraper, location, null, false, maxLinks, timezoneOffset);
-            sourceStream = htmlFilter;
-            scrapedCharset = htmlFilter.detectCharset();
-            if (scrapedCharset != null) scrapedCharset = patchCharsetEncoding(scrapedCharset);
-        } catch (final IOException e1) {
-            throw new Parser.Failure("Charset error:" + e1.getMessage(), location);
-        } finally {
-            if (htmlFilter != null) htmlFilter.close();
-        }
-        Charset scrapedCharsetCharset = null;
-        try {
-            scrapedCharsetCharset = Charset.forName(scrapedCharset);
-        } catch (IllegalArgumentException e) {}
-        if (charset == null || scrapedCharsetCharset != null) {
-            charset = scrapedCharset;
         }
 
         // the author didn't tell us the encoding, try the mozilla-heuristic
@@ -239,24 +216,25 @@ public class htmlParser extends AbstractParser implements Parser {
         
         // parsing the content
         // for this static methode no need to init local this.scraperObject here
-        final ContentScraper scraper = new ContentScraper(location, maxLinks, vocabularyScraper, timezoneOffset);
-        final TransformerWriter writer = new TransformerWriter(null,null,scraper,null,false, Math.max(64, Math.min(4096, sourceStream.available())));
+        final Scraper scraper = new Scraper(location, maxLinks, vocabularyScraper, timezoneOffset);
+        final Tokenizer tokenizer = new Tokenizer(scraper);
         try {
-            FileUtils.copy(sourceStream, writer, detectedcharsetcontainer[0]);
+            FileUtils.copy(sourceStream, tokenizer, detectedcharsetcontainer[0]);
         } catch (final IOException e) {
-            throw new Parser.Failure("IO error:" + e.getMessage(), location);
+            throw new Parser.Failure("IO error:" + e.getMessage(), location, e);
         } finally {
-            writer.flush();
+            tokenizer.flush();
             //sourceStream.close(); keep open for multipe parsing (close done by caller)
-            writer.close();
+            tokenizer.close();
         }
         //OutputStream hfos = new htmlFilterOutputStream(null, scraper, null, false);
         //serverFileUtils.copy(sourceFile, hfos);
         //hfos.close();
-        if (writer.binarySuspect()) {
+        if (tokenizer.binarySuspect()) {
             final String errorMsg = "Binary data found in resource";
             throw new Parser.Failure(errorMsg, location);
         }
+        scraper.setLd(tokenizer.ld());
         return scraper;
     }
 
@@ -347,17 +325,62 @@ public class htmlParser extends AbstractParser implements Parser {
         }
         return docs;
     }
+    
+    public static Document[] parse(String context) throws IOException {
+        htmlParser parser = new htmlParser();
+        MultiProtocolURL location = new MultiProtocolURL("http://context.local");
+        Document[] docs;
+        try {
+            docs = parser.parse(location, "text/html", "UTF-8", null, -60,
+                    new ByteArrayInputStream(context.getBytes("UTF-8")));
+            return docs;
+        } catch (Failure | InterruptedException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
 
     public static void main(String[] args) {
-        try {
-            Document[] test1 = load("http://www.tourismus-in-bueren.de/bildung_soziales/bildung/volkshochschule.php");
-            System.out.println(test1[0].dc_title());
-            Document[] test2 = load("http://www.bad-muenstereifel.de/seiten/leben_wohnen/bildung/Stadtbuecherei.php");
-            System.out.println(test2[0].dc_title());
-            Document[] test3 = load("http://yacy.net");
-            System.out.println(test3[0].dc_title());
-        } catch (IOException e) {
-            e.printStackTrace();
+
+        // verify RDFa with
+        // https://www.w3.org/2012/pyRdfa/Overview.html#distill_by_input
+        // http://rdf.greggkellogg.net/distiller?command=serialize&format=rdfa&output_format=jsonld
+        // https://rdfa.info/play/
+        // http://linter.structured-data.org/
+        
+        
+        if (args.length == 2) {
+            // parse from an etherpad
+            String etherpad = args[0];
+            String apikey = args[1];
+            String[] pads = new String[] {/*"05cc1575f55de2dc82f20f9010d71358", */"c8f2a54127f96b38a85623cb472e33cd"};
+            for (String padid: pads) {
+                try {
+                    String content = ClientConnection.loadFromEtherpad(etherpad, apikey, padid);
+                    Document[] docs = parse(content);
+                    System.out.println(docs[0].dc_title());
+                    System.out.println(docs[0].ld().toString(2));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
         }
+        /*
+        String[] testurl = new String[] {
+                "https://www.foodnetwork.com/recipes/tyler-florence/chicken-marsala-recipe-1951778",
+                "https://www.amazon.de/Hitchhikers-Guide-Galaxy-Paperback-Douglas/dp/B0043WOFQG",
+                "https://developers.google.com/search/docs/guides/intro-structured-data",
+                "https://www.bbcgoodfood.com/recipes/9652/bestever-tiramisu",
+                "https://www.livegigs.de/konzert/madball/duesseldorf-stone-im-ratinger-hof/2018-06-19"
+        };
+        for (String url: testurl) {
+            try {
+                Document[] docs = load(url);
+                System.out.println(docs[0].dc_title());
+                System.out.println(docs[0].ld().toString(2));
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        }
+        */
     }
 }
