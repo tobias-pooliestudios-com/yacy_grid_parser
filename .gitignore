@@ -47,3 +47,6 @@ target/
 .settings
 .idea
 out
+
+config-parser.properties
+log4j.properties
