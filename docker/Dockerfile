@@ -7,6 +7,7 @@ WORKDIR /app/yacy_grid_parser
 
 RUN gradle shadowJar && \
     mkdir data/parser-8500/conf/ -p && \
+    cp -r conf/* data/parser-8500/conf/ && \
     cp docker/config-parser.properties data/parser-8500/conf/config.properties
 
 FROM openjdk:8-alpine as runner
