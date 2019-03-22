@@ -5,10 +5,9 @@ LABEL MAINTAINER="publicplan GmbH"
 COPY --chown=gradle:gradle ./ /app/yacy_grid_parser
 WORKDIR /app/yacy_grid_parser
 
-RUN gradle shadowJar && \
+RUN gradle shadowJar --info && \
     mkdir data/parser-8500/conf/ -p && \
-    cp -r conf/* data/parser-8500/conf/ && \
-    cp docker/config-parser.properties data/parser-8500/conf/config.properties
+    cp -rf conf/* data/parser-8500/conf/
 
 FROM openjdk:8-alpine as runner
 
