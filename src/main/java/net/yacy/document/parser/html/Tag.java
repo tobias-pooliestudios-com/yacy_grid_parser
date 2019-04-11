@@ -244,7 +244,7 @@ public class Tag {
         // We call this method to give a hint that the new node data comes from a sub-structure of the html
         // It may happen that we have sub-structures but still no child relationships. The child relationship is only here
         // if the parent has the "itemprop" or "property" property
-        if (itemprop == null) {
+        if (itemprop == null || itemprop.length() < 1) {
             // not a child but we still must collect double entries and collect them into arrays
             if (thisNode.hasType() && childNode.hasType()) {
                 // both objects are graph elements of the parent node
@@ -253,7 +253,21 @@ public class Tag {
 
             } else {
                 for (String key: childNode.getPredicates()) {
-                    thisNode.addPredicate(key, childNode.getPredicateValue(key));
+                    if (thisNode.hasPredicate(key)) {
+                        // prevent overwriting by creation or extension of an array
+                        Object o0 = thisNode.getPredicateValue(key);
+                        Object o1 = childNode.getPredicateValue(key);
+                        if (o0 instanceof JSONArray) {
+                            ((JSONArray) o0).put(o1);
+                        } else {
+                            JSONArray a = new JSONArray();
+                            a.put(o0);
+                            a.put(o1);
+                            thisNode.setPredicate(key, a);
+                        }
+                    } else {
+                        thisNode.getJSON().put(key, childNode.getJSON().get(key));
+                    }
                 }
                 if (childNode.hasType()) thisNode.setType(childNode.getType());
             }
@@ -323,7 +337,7 @@ public class Tag {
         }
         
         // itemprop (schema.org)
-        if (itemprop != null) {
+        if (itemprop != null && itemprop.length() > 0) {
             // set content text but do not overwrite properties to prevent that we overwrite embedded objects
             String content_text = null;
             if (this.opts.containsKey("content")) {
