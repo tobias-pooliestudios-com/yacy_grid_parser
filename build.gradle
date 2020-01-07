@@ -70,6 +70,12 @@ dependencies {
     compile group: 'org.bouncycastle', name: 'bcprov-jdk15on', version: '1.61'
 }
 
+jar {
+    manifest {
+        attributes "Main-Class": "${project.mainClassName}"
+    }
+}
+
 shadowJar {
    baseName = 'shadow'
    classifier = null
