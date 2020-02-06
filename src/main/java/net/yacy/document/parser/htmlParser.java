@@ -26,6 +26,7 @@ package net.yacy.document.parser;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
@@ -33,7 +34,28 @@ import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.StandardCharsets;
 import java.nio.charset.UnsupportedCharsetException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.any23.Any23;
+import org.apache.any23.extractor.ExtractionException;
+import org.apache.any23.source.ByteArrayDocumentSource;
+import org.apache.any23.writer.JSONLDWriter;
+import org.apache.any23.writer.TripleHandlerException;
+import org.eclipse.rdf4j.model.Model;
+import org.eclipse.rdf4j.model.Statement;
+import org.eclipse.rdf4j.rio.RDFFormat;
+import org.eclipse.rdf4j.rio.RDFWriter;
+import org.eclipse.rdf4j.rio.Rio;
+import org.eclipse.rdf4j.rio.helpers.JSONLDMode;
+import org.eclipse.rdf4j.rio.helpers.JSONLDSettings;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import net.yacy.cora.document.encoding.UTF8;
 import net.yacy.grid.http.ClientConnection;
@@ -312,30 +334,145 @@ public class htmlParser extends AbstractParser implements Parser {
 
         return encoding;
     }
-    
+
     public static Document[] load(String url) throws IOException {
+        byte[] b = ClientConnection.load(url);
+        return parse(url, b);
+    }
+    
+    public static Document[] parse(String url, byte[] b) throws IOException {
         MultiProtocolURL location = new MultiProtocolURL(url);
         htmlParser parser = new htmlParser();
         Document[] docs;
         try {
-            docs = parser.parse(location, "text/html", "UTF-8", null, -60,
-                    new ByteArrayInputStream(ClientConnection.load(url)));
+            docs = parser.parse(location, "text/html", "UTF-8", null, -60, new ByteArrayInputStream(b));
         } catch (Failure | InterruptedException e) {
             throw new IOException (e.getMessage());
         }
         return docs;
     }
-    
+
     public static Document[] parse(String context) throws IOException {
         htmlParser parser = new htmlParser();
         MultiProtocolURL location = new MultiProtocolURL("http://context.local");
         Document[] docs;
+        byte[] b = context.getBytes(StandardCharsets.UTF_8);
         try {
-            docs = parser.parse(location, "text/html", "UTF-8", null, -60,
-                    new ByteArrayInputStream(context.getBytes("UTF-8")));
+            docs = parser.parse(location, "text/html", "UTF-8", null, -60, new ByteArrayInputStream(b));
             return docs;
         } catch (Failure | InterruptedException e) {
             throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    public static String JSONLDExpand2Mode(String url, String jsons, JSONLDMode mode) throws IOException {
+        byte[] jsonb = jsons.getBytes(StandardCharsets.UTF_8);
+        ByteArrayInputStream bais = new ByteArrayInputStream(jsonb);
+        Model model = Rio.parse(bais, url, RDFFormat.JSONLD);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        RDFWriter writer = Rio.createWriter(RDFFormat.JSONLD, baos);
+        writer.getWriterConfig().set(JSONLDSettings.JSONLD_MODE, mode);
+        writer.startRDF();
+        for (Statement st: model) writer.handleStatement(st);
+        writer.endRDF();
+        baos.close();
+        jsonb = baos.toByteArray();
+        jsons = new String(jsonb, StandardCharsets.UTF_8);
+        return jsons;
+    }
+
+    public static String RDFa2JSONLDExpandString(String url, byte[] b) throws IOException {
+        Any23 any23 = new Any23();
+        ByteArrayDocumentSource ds = new ByteArrayDocumentSource(b, url, "text/html"); // text/html; application/xhtml+xml
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        JSONLDWriter th = new JSONLDWriter(baos);
+        try {
+            any23.extract(ds, th);
+            th.close();
+            baos.close();
+        } catch (IOException | ExtractionException | TripleHandlerException e) {
+            throw new IOException(e.getCause());
+        }
+        byte[] jsonb = baos.toByteArray();
+        String jsons = new String(jsonb, StandardCharsets.UTF_8);
+        return jsons;
+    }
+
+    public static JSONObject compact2tree(JSONObject compact) {
+        JSONObject tree = new JSONObject(true);
+        JSONArray treegraph = new JSONArray();
+        LinkedHashMap<String, JSONObject> index = new LinkedHashMap<>();
+        String id = compact.optString("@id", "");
+
+        // first create a node index to look up tree nodes
+        JSONArray graph = compact.getJSONArray("@graph");
+        for (int i = 0; i < graph.length(); i++) {
+            JSONObject node = graph.getJSONObject(i);
+            String nodeid = node.optString("@id", "");
+            index.put(nodeid, node);
+        }
+        while (!index.isEmpty()) {
+            JSONObject node = index.remove(index.keySet().iterator().next());
+            enrichNode(node, index);
+            treegraph.put(node);
+        }
+        tree.put("@id", id);
+        tree.put("@graph", treegraph);
+        return tree;
+    }
+
+    private static void enrichNode(JSONObject node, Map<String, JSONObject> index) {
+        Iterator<String> keyi = node.keys();
+        List<String> keys = new ArrayList<>();
+        while (keyi.hasNext()) keys.add(keyi.next());
+        Set<String> contexts = new HashSet<>();
+        for (String key: keys) {
+            Object object = node.get(key);
+            if (object instanceof JSONObject) {
+                JSONObject value = (JSONObject) object;
+                enrichObject4Node(node, key, value, index);
+            }
+            if (object instanceof JSONArray) {
+                JSONArray values = (JSONArray) object;
+                for (int i = 0; i < values.length(); i++) {
+                    enrichObject4Node(node, key, values.getJSONObject(i), index);
+                }
+            }
+            if (key.charAt(0) != '@') {
+                int p = key.lastIndexOf('/');
+                if (p >= 0) contexts.add(key.substring(0, p + 1));
+            }
+        }
+
+        // clean up
+        //node.remove("@id");
+        // create a "@context"
+        if (!node.has("@context") && contexts.size() == 1) {
+            String context = contexts.iterator().next();
+            node.put("@context", context);
+            for (String key: keys) {
+                if (key.startsWith(context)) {
+                    Object object = node.remove(key);
+                    node.put(key.substring(context.length()), object);
+                }
+            }
+        }
+    }
+
+    private static void enrichObject4Node(JSONObject node, String key, JSONObject object, Map<String, JSONObject> index) {
+        JSONObject value = (JSONObject) object;
+        if (value.has("@id")) {
+            String id = value.getString("@id");
+            JSONObject branch = index.get(id);
+            if (branch != null) {
+                index.remove(id);
+                enrichNode(branch, index);
+                node.put(key, branch);
+            }
+        } else if (value.has("@value")) {
+            Object vobject = value.get("@value");
+            if (vobject instanceof String) vobject = ((String) vobject).trim();
+            node.put(key, vobject);
         }
     }
 
@@ -374,18 +511,29 @@ public class htmlParser extends AbstractParser implements Parser {
                 //"https://www.livegigs.de/konzert/madball/duesseldorf-stone-im-ratinger-hof/2018-06-19",
                 //"https://www.mags.nrw/arbeit",
                 "https://release-8-0-x-dev-224m2by-lj6ob4e22x2mc.eu.platform.sh/test", // unvollständig
-                "http://fim-landesredaktion.nrw/ultimateRdfa.html", // unvollständig
+                "https://redaktion.vsm.nrw/ultimateRdfa2.html", // unvollständig
                 "https://files.gitter.im/yacy/publicplan/OJR0/error1.html", // 2. Anschrift und kommunikation fehlt
                 "https://files.gitter.im/yacy/publicplan/eol2/error2.html", // OK!
                 "https://files.gitter.im/yacy/publicplan/41gy/error2-wirdSoIndexiert.html" // 2. Kommunikation fehlt
         };
         for (String url: testurl) {
             try {
-                Document[] docs = load(url);
+                byte[] b = ClientConnection.load(url);
+                String s = RDFa2JSONLDExpandString(url, b);
+                JSONArray jaExpand = new JSONArray(s);
+                JSONArray jaFlatten = new JSONArray(JSONLDExpand2Mode(url, s, JSONLDMode.FLATTEN));
+                JSONObject jaCompact = new JSONObject(JSONLDExpand2Mode(url, s, JSONLDMode.COMPACT));
+                String compactString = jaCompact.toString(2); // store the compact json-ld into a string because compact2tree is destructive
+                JSONObject jaTree = compact2tree(jaCompact);
+                Document[] docs = parse(url, b);
                 System.out.println("URL     : " + url);
                 System.out.println("Title   : " + docs[0].dc_title());
                 System.out.println("Content : " + docs[0].getTextString());
                 System.out.println("JSON-LD : " + docs[0].ld().toString(2));
+                System.out.println("any23-e : " + jaExpand.toString(2));
+                System.out.println("any23-f : " + jaFlatten.toString(2));
+                System.out.println("any23-c : " + compactString);
+                System.out.println("any23-t : " + jaTree.toString(2));
             } catch (Throwable e) {
                 e.printStackTrace();
             }
