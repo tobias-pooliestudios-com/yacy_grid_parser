@@ -41,7 +41,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import ai.susi.json.JsonLD;
+import org.json.JSONObject;
+
 import net.yacy.cora.date.ISO8601Formatter;
 import net.yacy.cora.sorting.ClusteredScoreMap;
 import net.yacy.cora.storage.SizeLimitedMap;
@@ -94,7 +95,8 @@ public class Scraper {
     private final VocabularyScraper vocabularyScraper;
     private final int timezoneOffset;
     private int breadcrumbs;
-    private JsonLD ld;
+    //private JsonLD ld;
+    private JSONObject ld;
     private boolean googleoff;
 
     /** links to icons that belongs to the document (mapped by absolute URL)*/
@@ -163,11 +165,11 @@ public class Scraper {
         this.googleoff = false; // if this is false, it means that we are outside of an googleoff event. If it is true, we are just between googleoff and googleon
     }
     
-    public void setLd(JsonLD ld) {
+    public void setLd(JSONObject ld) {
         this.ld = ld;
     }
     
-    public JsonLD getLd() {
+    public JSONObject getLd() {
         return this.ld;
     }
     
