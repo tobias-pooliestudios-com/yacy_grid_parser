@@ -35,6 +35,7 @@ import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.StandardCharsets;
 import java.nio.charset.UnsupportedCharsetException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -417,7 +418,7 @@ public class htmlParser extends AbstractParser implements Parser {
     }
 
     public static JSONObject compact2tree(JSONObject compact) {
-        JSONObject tree = new JSONObject(true);
+        Map<String, Set<String>> contextcollector = new LinkedHashMap<>();
         JSONArray treegraph = new JSONArray();
         LinkedHashMap<String, JSONObject> index = new LinkedHashMap<>();
         String id = compact.optString("@id", "");
@@ -427,94 +428,152 @@ public class htmlParser extends AbstractParser implements Parser {
         for (int i = 0; i < graph.length(); i++) {
             JSONObject node = graph.getJSONObject(i);
             String nodeid = node.optString("@id", "");
+            assert !index.containsKey(nodeid);
             index.put(nodeid, node);
         }
         while (!index.isEmpty()) {
             JSONObject node = index.remove(index.keySet().iterator().next());
-            enrichNode(node, index);
+            enrichNode(node, index, contextcollector);
             treegraph.put(node);
         }
+
+        // compute the context
+        JSONObject context = new JSONObject(true);
+        contextcollector.forEach((context_name, context_ids) -> {
+            if (context_ids.size() == 1) context.put(context_name, context_ids.iterator().next());
+        });
+
+        // replace all ids with the shortened context name
+        Map<String, String> reverse_context = new HashMap<>();
+        context.keySet().forEach(key -> reverse_context.put(context.getString(key), key));
+        replaceContext(treegraph, reverse_context);
+
+        // set up the tree object with the used context
+        JSONObject tree = new JSONObject(true);
         tree.put("@id", id);
+
+        if (context.length() > 0) tree.put("@context", context);
         tree.put("@graph", treegraph);
         return tree;
     }
 
-    private static void enrichNode(JSONObject node, Map<String, JSONObject> index) {
+    private static void replaceContext(JSONArray treegraph, Map<String, String> reverse_context) {
+        for (int i = 0; i < treegraph.length(); i++) {
+            Object j = treegraph.get(i);
+            if (j instanceof JSONObject) {
+                replaceContext((JSONObject) j, reverse_context);
+            } else if (j instanceof JSONArray) {
+                replaceContext((JSONArray) j, reverse_context);
+            }
+        }
+    }
+
+    private static void replaceContext(JSONObject treegraph, Map<String, String> reverse_context) {
+        JSONObject newgraph = new JSONObject(true);
+        List<String> oldkeys = new ArrayList<>();
+        for (String key: treegraph.keySet()) {
+            // remember all old keys
+            oldkeys.add(key);
+
+            // recursion into next level
+            Object j = treegraph.get(key);
+            if (j instanceof JSONObject) {
+                replaceContext((JSONObject) j, reverse_context);
+            } else if (j instanceof JSONArray) {
+                replaceContext((JSONArray) j, reverse_context);
+            }
+
+            // rewrite keys
+            String context_id = reverse_context.get(key);
+            if (context_id == null) {
+                newgraph.put(key, j);
+            } else {
+                newgraph.put(context_id, j);
+            }
+        }
+
+        // copy new graph into place of old graph
+        oldkeys.forEach(key -> treegraph.remove(key));
+        for (String key: newgraph.keySet()) {
+            treegraph.put(key, newgraph.get(key));
+        }
+    }
+
+    private static void enrichNode(JSONObject node, Map<String, JSONObject> index, Map<String, Set<String>> contextcollector) {
         Iterator<String> keyi = node.keys();
         List<String> keys = new ArrayList<>();
         while (keyi.hasNext()) keys.add(keyi.next());
-        Set<String> contexts = new HashSet<>();
         for (String key: keys) {
             Object object = node.get(key);
+
+            // branch either into another object or array
             if (object instanceof JSONObject) {
                 JSONObject value = (JSONObject) object;
-                enrichObject4Node(node, key, value, index);
-            }
-            if (object instanceof JSONArray) {
+                if (value.has("@id")) {
+                    String id = value.getString("@id");
+                    JSONObject branch = index.get(id);
+                    if (branch != null) {
+                        index.remove(id);
+                        enrichNode(branch, index, contextcollector);
+                        node.put(key, branch);
+                    }
+                } else if (value.has("@value")) {
+                    Object vobject = value.get("@value");
+                    if (vobject instanceof String) vobject = ((String) vobject).trim();
+                    node.put(key, vobject);
+                }
+            } else if (object instanceof JSONArray) {
                 JSONArray values = (JSONArray) object;
                 for (int i = 0; i < values.length(); i++) {
-                    Object v = values.get(i);
-                    if (v instanceof JSONObject) enrichObject4Node(node, key, (JSONObject) v, index);
+                    Object o = values.get(i);
+                    if (!(o instanceof JSONObject)) continue;
+                    JSONObject value = (JSONObject) o;
+                    if (value.has("@id")) {
+                        String id = value.getString("@id");
+                        JSONObject branch = index.get(id);
+                        if (branch != null) {
+                            index.remove(id);
+                            enrichNode(branch, index, contextcollector);
+                            values.put(i, branch);
+                        }
+                    } else if (value.has("@value")) {
+                        Object vobject = value.get("@value");
+                        if (vobject instanceof String) vobject = ((String) vobject).trim();
+                        values.put(i, vobject);
+                    }
                 }
             }
+
+            // record all contexts
             if (key.charAt(0) != '@') {
                 int p = key.lastIndexOf('/');
-                if (p >= 0) contexts.add(key.substring(0, p + 1));
+                if (p >= 0) {
+                    String context_name = key.substring(p + 1);
+                    String context_id = key;
+                    Set<String> context_ids = contextcollector.get(context_name);
+                    if (context_ids == null) {
+                        context_ids = new HashSet<>();
+                        contextcollector.put(context_name, context_ids);
+                    }
+                    context_ids.add(context_id);
+                }
             }
         }
 
         // clean up
         if (node.has("@id") && node.getString("@id").startsWith("_")) node.remove("@id");
-        // create a "@context"
-        if (!node.has("@context") && contexts.size() == 1) {
-            String context = contexts.iterator().next();
-            node.put("@context", context);
-            for (String key: keys) {
-                if (key.startsWith(context)) {
-                    Object object = node.remove(key);
-                    node.put(key.substring(context.length()), object);
-                }
-            }
-        }
-    }
-
-    private static void enrichObject4Node(JSONObject node, String key, JSONObject object, Map<String, JSONObject> index) {
-        JSONObject value = (JSONObject) object;
-        if (value.has("@id")) {
-            String id = value.getString("@id");
-            JSONObject branch = index.get(id);
-            if (branch != null) {
-                index.remove(id);
-                enrichNode(branch, index);
-                node.put(key, branch);
-            }
-        } else if (value.has("@value")) {
-            Object vobject = value.get("@value");
-            if (vobject instanceof String) vobject = ((String) vobject).trim();
-            node.put(key, vobject);
-        }
     }
 
     public static Set<String> getLdContext(JSONObject ld) {
         Set<String> context = new LinkedHashSet<>();
-        if (ld.has("@graph")) {
-            JSONArray lda = ld.optJSONArray("@graph");
-            lda.forEach(o -> context.addAll(getLdContext((JSONObject) o)));
-        } else {
-            for (String key: ld.keySet()) {
-                if (key.equals("@context")) {
-                    context.add(ld.getString(key));
-                } else if (!key.startsWith("@")) {
-                    Object j = ld.get(key);
-                    if (j instanceof JSONObject) context.addAll(getLdContext((JSONObject) j));
-                }
-            }
+        if (ld.has("@context")) {
+            JSONObject lda = ld.optJSONObject("@context");
+            lda.keySet().forEach(key -> context.add(lda.getString(key)));
         }
         return context;
     }
 
     public static void main(String[] args) {
-
         // verify RDFa with
         // https://www.w3.org/2012/pyRdfa/Overview.html#distill_by_input
         // http://rdf.greggkellogg.net/distiller?command=serialize&format=rdfa&output_format=jsonld
@@ -541,6 +600,7 @@ public class htmlParser extends AbstractParser implements Parser {
         */
 
         String[] testurl = new String[] {
+                
                 "https://www.foodnetwork.com/recipes/tyler-florence/chicken-marsala-recipe-1951778",
                 "https://www.amazon.de/Hitchhikers-Guide-Galaxy-Paperback-Douglas/dp/B0043WOFQG",
                 "https://developers.google.com/search/docs/guides/intro-structured-data",
@@ -551,7 +611,9 @@ public class htmlParser extends AbstractParser implements Parser {
                 "https://release-8-0-x-dev-224m2by-lj6ob4e22x2mc.eu.platform.sh/test", // unvollständig
                 "https://files.gitter.im/yacy/publicplan/OJR0/error1.html", // 2. Anschrift und kommunikation fehlt
                 "https://files.gitter.im/yacy/publicplan/eol2/error2.html", // OK!
-                "https://files.gitter.im/yacy/publicplan/41gy/error2-wirdSoIndexiert.html" // 2. Kommunikation fehlt
+                "https://files.gitter.im/yacy/publicplan/41gy/error2-wirdSoIndexiert.html", // 2. Kommunikation fehlt
+                
+                "https://redaktion.vsm.nrw/rdfa-mit-duplikate.html"
         };
         for (String url: testurl) {
             try {
