@@ -7,7 +7,7 @@ WORKDIR /app/yacy_grid_parser
 
 RUN gradle build --info && \
     mkdir build/distributions/app && \
-    unzip build/distributions/*.zip -d build/distributions/app && \
+    unzip -o build/distributions/*.zip -d build/distributions/app && \
     mkdir data/parser-8500/conf/ -p && \
     cp -rf conf/* data/parser-8500/conf/
 
