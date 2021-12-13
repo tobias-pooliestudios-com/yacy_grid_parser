@@ -11,7 +11,7 @@ RUN gradle build --info && \
     mkdir -p data/parser-8500/conf/ && \
     cp -rf conf/* data/parser-8500/conf/
 
-FROM openjdk:8-alpine as runner
+FROM openjdk:11 as runner
 
 COPY --from=builder /app/yacy_grid_parser/build/distributions/app/* /app
 COPY --from=builder /app/yacy_grid_parser/data /app/data
