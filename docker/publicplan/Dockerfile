@@ -1,4 +1,4 @@
-FROM gradle:5.4-jdk8-alpine as builder
+FROM gradle:6.9-jdk11-alpine as builder
 MAINTAINER publicplan GmbH
 LABEL MAINTAINER="publicplan GmbH"
 
@@ -8,7 +8,7 @@ WORKDIR /app/yacy_grid_parser
 RUN gradle build --info && \
     mkdir build/distributions/app && \
     unzip -o build/distributions/*.zip -d build/distributions/app && \
-    mkdir data/parser-8500/conf/ -p && \
+    mkdir -p data/parser-8500/conf/ && \
     cp -rf conf/* data/parser-8500/conf/
 
 FROM openjdk:8-alpine as runner

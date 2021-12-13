@@ -1,6 +1,9 @@
 version: '2'
 services:
   yacy_grid_parser:
-    build: .
+    build:
+      context: ../..
+      dockerfile: ./docker/publicplan/Dockerfile
+
     ports:
       - 8500:8500
