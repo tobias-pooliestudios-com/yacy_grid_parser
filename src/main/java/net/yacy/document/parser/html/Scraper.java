@@ -45,6 +45,7 @@ import org.json.JSONObject;
 
 import net.yacy.cora.date.ISO8601Formatter;
 import net.yacy.cora.sorting.ClusteredScoreMap;
+import net.yacy.cora.storage.CaseInsensitiveMap;
 import net.yacy.cora.storage.SizeLimitedMap;
 import net.yacy.cora.storage.SizeLimitedSet;
 import net.yacy.cora.util.NumberTools;
@@ -63,7 +64,7 @@ import net.yacy.kelondro.util.ISO639;
 
 public class Scraper {
 
-	public static final int MAX_DOCSIZE = 40 * 1024 * 1024;
+    public static final int MAX_DOCSIZE = 40 * 1024 * 1024;
 
     private final char degree = '\u00B0';
     private final char[] minuteCharsHTML = "&#039;".toCharArray();
@@ -78,9 +79,9 @@ public class Scraper {
     private final LinkedHashMap<AnchorURL, EmbedEntry> embeds; // urlhash/embed relation
     private final List<ImageEntry> images;
     private final Set<AnchorURL> script, frames, iframes;
-    private final Map<String, String> metas;
+    private final CaseInsensitiveMap<String> metas;
     private final Map<String, MultiProtocolURL> hreflang, navigation;
-    private LinkedHashSet<String> titles;
+    private final LinkedHashSet<String> titles;
     private final List<String> articles;
     private final List<Date> startDates, endDates;
     //private String headline;
@@ -119,7 +120,7 @@ public class Scraper {
      * @param timezoneOffset local time zone offset
      */
     @SuppressWarnings("unchecked")
-    public Scraper(final MultiProtocolURL root, int maxLinks, final VocabularyScraper vocabularyScraper, int timezoneOffset) {
+    public Scraper(final MultiProtocolURL root, final int maxLinks, final VocabularyScraper vocabularyScraper, final int timezoneOffset) {
         // the root value here will not be used to load the resource.
         // it is only the reference for relative links
         super();
@@ -137,7 +138,7 @@ public class Scraper {
         this.embeds = new SizeLimitedMap<AnchorURL, EmbedEntry>(maxLinks);
         this.frames = new SizeLimitedSet<AnchorURL>(maxLinks);
         this.iframes = new SizeLimitedSet<AnchorURL>(maxLinks);
-        this.metas = new SizeLimitedMap<String, String>(maxLinks);
+        this.metas = new CaseInsensitiveMap<String>();
         this.hreflang = new SizeLimitedMap<String, MultiProtocolURL>(maxLinks);
         this.navigation = new SizeLimitedMap<String, MultiProtocolURL>(maxLinks);
         this.script = new SizeLimitedSet<AnchorURL>(maxLinks);
@@ -164,7 +165,7 @@ public class Scraper {
         this.googleoff = false; // if this is false, it means that we are outside of an googleoff event. If it is true, we are just between googleoff and googleon
     }
 
-    public void setLd(JSONObject ld) {
+    public void setLd(final JSONObject ld) {
         this.ld = ld;
     }
 
@@ -184,7 +185,7 @@ public class Scraper {
         // System.out.println("SCRAPE: " + UTF8.String(newtext));
         if (insideTag != null && (TagName.script.name().equals(insideTag) || TagName.style.name().equals(insideTag))) return;
         int p, pl, q, s = 0;
-        char[] newtext = CharacterCoding.html2unicode(new String(newtext0)).toCharArray();
+        final char[] newtext = CharacterCoding.html2unicode(new String(newtext0)).toCharArray();
 
         // match evaluation pattern
         this.evaluationScores.match(Element.text, newtext);
@@ -300,14 +301,14 @@ public class Scraper {
         }
     }
 
-    public void checkOpts(Tag tag) {
+    public void checkOpts(final Tag tag) {
         //System.out.println("### " + tag.toString());
         // vocabulary classes
         final String classprop = tag.getProperty("class", EMPTY_STRING);
         if (this.vocabularyScraper != null) this.vocabularyScraper.check(this.root, classprop, tag.getContent());
 
         // itemprop (schema.org)
-        String itemprop = tag.getProperty("itemprop", tag.getProperty("property", null));
+        final String itemprop = tag.getProperty("itemprop", tag.getProperty("property", null));
         if (itemprop != null) {
 
             // special content (legacy, pre-JSON-LD-parsing)
@@ -327,86 +328,86 @@ public class Scraper {
                     case "startDate": // <meta itemprop="startDate" content="2016-04-21T20:00">
                         try {
                             // parse ISO 8601 date
-                            Date startDate = ISO8601Formatter.FORMATTER.parse(propval, this.timezoneOffset).getTime();
+                            final Date startDate = ISO8601Formatter.FORMATTER.parse(propval, this.timezoneOffset).getTime();
                             this.startDates.add(startDate);
-                        } catch (ParseException e) {}
+                        } catch (final ParseException e) {}
                         break;
                     case "endDate":
                         try {
                             // parse ISO 8601 date
-                            Date endDate = ISO8601Formatter.FORMATTER.parse(propval, this.timezoneOffset).getTime();
+                            final Date endDate = ISO8601Formatter.FORMATTER.parse(propval, this.timezoneOffset).getTime();
                             this.endDates.add(endDate);
-                        } catch (ParseException e) {}
+                        } catch (final ParseException e) {}
                         break;
                 }
             }
         }
     }
 
-	/**
-	 * Parses sizes icon link attribute. (see
-	 * http://www.w3.org/TR/html5/links.html#attr-link-sizes) Eventual
-	 * duplicates are removed.
-	 *
-	 * @param sizesAttr
-	 *            sizes attribute string, may be null
-	 * @return a set of sizes eventually empty.
-	 */
-	public static Set<Dimension> parseSizes(String sizesAttr) {
-		Set<Dimension> sizes = new HashSet<Dimension>();
-		Set<String> tokens = parseSpaceSeparatedTokens(sizesAttr);
-		for (String token : tokens) {
-			/*
-			 * "any" keyword may be present, but doesn't have to produce a
-			 * dimension result
-			 */
-			if (token != null) {
-				Matcher matcher = IconEntry.SIZE_PATTERN.matcher(token);
-				if (matcher.matches()) {
-					/* With given pattern no NumberFormatException can occur */
-					sizes.add(new Dimension(Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher.group(2))));
-				}
-			}
-		}
-		return sizes;
-	}
+    /**
+     * Parses sizes icon link attribute. (see
+     * http://www.w3.org/TR/html5/links.html#attr-link-sizes) Eventual
+     * duplicates are removed.
+     *
+     * @param sizesAttr
+     *            sizes attribute string, may be null
+     * @return a set of sizes eventually empty.
+     */
+    public static Set<Dimension> parseSizes(final String sizesAttr) {
+        final Set<Dimension> sizes = new HashSet<Dimension>();
+        final Set<String> tokens = parseSpaceSeparatedTokens(sizesAttr);
+        for (final String token : tokens) {
+            /*
+             * "any" keyword may be present, but doesn't have to produce a
+             * dimension result
+             */
+            if (token != null) {
+                final Matcher matcher = IconEntry.SIZE_PATTERN.matcher(token);
+                if (matcher.matches()) {
+                    /* With given pattern no NumberFormatException can occur */
+                    sizes.add(new Dimension(Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher.group(2))));
+                }
+            }
+        }
+        return sizes;
+    }
 
-	/**
-	 * Parses a space separated tokens attribute value (see
-	 * http://www.w3.org/TR/html5/infrastructure.html#space-separated-tokens).
-	 * Eventual duplicates are removed.
-	 *
-	 * @param attr
-	 *            attribute string, may be null
-	 * @return a set of tokens eventually empty
-	 */
-	public static Set<String> parseSpaceSeparatedTokens(String attr) {
-		Set<String> tokens = new HashSet<>();
-		/* Check attr string is not empty to avoid adding a single empty string
-		 * in result */
-		if (attr != null && !attr.trim().isEmpty()) {
-			String[] items = attr.trim().split(CommonPattern.SPACES.pattern());
-			Collections.addAll(tokens, items);
-		}
-		return tokens;
-	}
+    /**
+     * Parses a space separated tokens attribute value (see
+     * http://www.w3.org/TR/html5/infrastructure.html#space-separated-tokens).
+     * Eventual duplicates are removed.
+     *
+     * @param attr
+     *            attribute string, may be null
+     * @return a set of tokens eventually empty
+     */
+    public static Set<String> parseSpaceSeparatedTokens(final String attr) {
+        final Set<String> tokens = new HashSet<>();
+        /* Check attr string is not empty to avoid adding a single empty string
+         * in result */
+        if (attr != null && !attr.trim().isEmpty()) {
+            final String[] items = attr.trim().split(CommonPattern.SPACES.pattern());
+            Collections.addAll(tokens, items);
+        }
+        return tokens;
+    }
 
     /**
      * Retain only icon relations (standard and non standard) from tokens .
      * @param relTokens relationship tokens (parsed from a rel attribute)
      * @return a Set of icon relations, eventually empty
      */
-    private Set<String> retainIconRelations(Collection<String> relTokens) {
-    	HashSet<String> iconRels = new HashSet<>();
-    	for(String token : relTokens) {
-    		if(IconLinkRelations.isIconRel(token)) {
-    			iconRels.add(token.toLowerCase(Locale.ENGLISH));
-    		}
-    	}
-    	return iconRels;
+    private Set<String> retainIconRelations(final Collection<String> relTokens) {
+        final HashSet<String> iconRels = new HashSet<>();
+        for(final String token : relTokens) {
+            if(IconLinkRelations.isIconRel(token)) {
+                iconRels.add(token.toLowerCase(Locale.ENGLISH));
+            }
+        }
+        return iconRels;
     }
 
-    public void scrapeTag0(Tag tag) {
+    public void scrapeTag0(final Tag tag) {
         checkOpts(tag);
         if (tag.hasName("img")) {
             final String src = tag.getProperty("src", EMPTY_STRING);
@@ -436,11 +437,11 @@ public class Scraper {
         } else if (tag.hasName("frame")) {
             final AnchorURL src = absolutePath(tag.getProperty("src", EMPTY_STRING));
             if(src != null) {
-            	tag.setProperty("src", src.toNormalform(true));
-            	src.setAll(tag.getProperties());
-            	//this.addAnchor(src); // don't add the frame to the anchors because the webgraph should not contain such links (by definition)
-            	this.frames.add(src);
-            	this.evaluationScores.match(Element.framepath, src.toNormalform(true));
+                tag.setProperty("src", src.toNormalform(true));
+                src.setAll(tag.getProperties());
+                //this.addAnchor(src); // don't add the frame to the anchors because the webgraph should not contain such links (by definition)
+                this.frames.add(src);
+                this.evaluationScores.match(Element.framepath, src.toNormalform(true));
             }
         } else if (tag.hasName("body")) {
             final String classprop = tag.getProperty("class", EMPTY_STRING);
@@ -468,11 +469,11 @@ public class Scraper {
             final String href  = tag.getProperty("href", EMPTY_STRING);
             if (href.length() > 0) {
                 tag.setProperty("name", areatitle);
-                AnchorURL url = absolutePath(href);
+                final AnchorURL url = absolutePath(href);
                 if (url != null) {
-                	tag.setProperty("href", url.toNormalform(true));
-                	url.setAll(tag.getProperties());
-                	this.addAnchor(url);
+                    tag.setProperty("href", url.toNormalform(true));
+                    url.setAll(tag.getProperties());
+                    this.addAnchor(url);
                 }
             }
         } else if (tag.hasName("link")) {
@@ -481,29 +482,29 @@ public class Scraper {
 
             if (newLink != null) {
                 tag.setProperty("href", newLink.toNormalform(true));
-                String rel = tag.getProperty("rel", EMPTY_STRING);
+                final String rel = tag.getProperty("rel", EMPTY_STRING);
                 /* Rel attribute is supposed to be a set of space-separated tokens */
-                Set<String> relTokens = parseSpaceSeparatedTokens(rel);
+                final Set<String> relTokens = parseSpaceSeparatedTokens(rel);
 
                 final String linktitle = tag.getProperty("title", EMPTY_STRING);
                 final String type = tag.getProperty("type", EMPTY_STRING);
                 final String hreflang = tag.getProperty("hreflang", EMPTY_STRING);
 
-                Set<String> iconRels = retainIconRelations(relTokens);
+                final Set<String> iconRels = retainIconRelations(relTokens);
                 /* Distinguish icons from images. It will enable for example to later search only images and no icons */
                 if (!iconRels.isEmpty()) {
-                	String sizesAttr = tag.getProperty("sizes", EMPTY_STRING);
-                	Set<Dimension> sizes = parseSizes(sizesAttr);
-                	IconEntry icon = this.icons.get(newLink);
-                	/* There is already an icon with same URL for this document :
-                	 * they may have different rel attribute or different sizes (multi sizes ico file) or this may be a duplicate */
-                	if(icon != null) {
-                		icon.getRel().addAll(iconRels);
-                		icon.getSizes().addAll(sizes);
-                	} else {
-                		icon = new IconEntry(newLink, iconRels, sizes);
-                		this.icons.put(newLink, icon);
-                	}
+                    final String sizesAttr = tag.getProperty("sizes", EMPTY_STRING);
+                    final Set<Dimension> sizes = parseSizes(sizesAttr);
+                    IconEntry icon = this.icons.get(newLink);
+                    /* There is already an icon with same URL for this document :
+                     * they may have different rel attribute or different sizes (multi sizes ico file) or this may be a duplicate */
+                    if(icon != null) {
+                        icon.getRel().addAll(iconRels);
+                        icon.getSizes().addAll(sizes);
+                    } else {
+                        icon = new IconEntry(newLink, iconRels, sizes);
+                        this.icons.put(newLink, icon);
+                    }
                 } else if (rel.equalsIgnoreCase("canonical")) {
                     tag.setProperty("name", this.titles.size() == 0 ? "" : this.titles.iterator().next());
                     newLink.setAll(tag.getProperties());
@@ -545,7 +546,7 @@ public class Scraper {
         } else if(tag.hasName("param")) {
             final String name = tag.getProperty("name", EMPTY_STRING);
             if (name.equalsIgnoreCase("movie")) {
-                AnchorURL url = absolutePath(tag.getProperty("value", EMPTY_STRING));
+                final AnchorURL url = absolutePath(tag.getProperty("value", EMPTY_STRING));
                 if (url != null) {
                     tag.setProperty("value", url.toNormalform(true));
                     url.setAll(tag.getProperties());
@@ -568,8 +569,8 @@ public class Scraper {
         }
     }
 
-    public void scrapeTag1(Tag tag) {
-        String content_text = Tag.stripAllTags(tag.getContent());
+    public void scrapeTag1(final Tag tag) {
+        final String content_text = Tag.stripAllTags(tag.getContent());
         checkOpts(tag);
         // System.out.println("ScrapeTag1: tag.tagname=" + tag.tagname + ", opts=" + tag.opts.toString() + ", text=" + UTF8.String(text));
         if (tag.hasName("a") && tag.getContenLength() < 2048) {
@@ -647,10 +648,10 @@ public class Scraper {
         } else if (tag.hasName("script")) {
             final String src = tag.getProperty("src", EMPTY_STRING);
             if (src.length() > 0) {
-            	AnchorURL absoluteSrc = absolutePath(src);
-            	if(absoluteSrc != null) {
-            		this.script.add(absoluteSrc);
-            	}
+                final AnchorURL absoluteSrc = absolutePath(src);
+                if(absoluteSrc != null) {
+                    this.script.add(absoluteSrc);
+                }
                 this.evaluationScores.match(Element.scriptpath, src);
             } else {
                 this.evaluationScores.match(Element.scriptcode, LB.matcher(new String(tag.getContent())).replaceAll(" "));
@@ -662,9 +663,9 @@ public class Scraper {
             h = tag.getProperty("datetime"); // TODO: checkOpts() also parses datetime property if in combination with schema.org itemprop=startDate/endDate
             if (h != null) { // datetime property is optional
                 try {
-                    Date startDate = ISO8601Formatter.FORMATTER.parse(h, this.timezoneOffset).getTime();
+                    final Date startDate = ISO8601Formatter.FORMATTER.parse(h, this.timezoneOffset).getTime();
                     this.startDates.add(startDate);
-                } catch (ParseException ex) { }
+                } catch (final ParseException ex) { }
             }
         }
     }
@@ -673,12 +674,12 @@ public class Scraper {
      * Add an anchor to the anchors list, and trigger any eventual listener
      * @param anchor anchor to add. Must not be null.
      */
-    private void addAnchor(AnchorURL anchor) {
-    	this.anchors.add(anchor);
+    private void addAnchor(final AnchorURL anchor) {
+        this.anchors.add(anchor);
     }
 
     public void scrapeComment(final char[] comment) {
-        String s = new String(comment);
+        final String s = new String(comment);
         if (s.indexOf("googleoff:") >= 0) {
             this.googleoff = true;
         }
@@ -710,13 +711,13 @@ public class Scraper {
         for (final AnchorURL entry: scraper.getAnchors()) {
             this.addAnchor(entry);
         }
-        String line = cleanLine(CharacterCoding.html2unicode(Tag.stripAllTags(scraper.content.getChars())));
-        StringBuilder altakk = new StringBuilder();
-        for (ImageEntry ie: scraper.images) {
+        final String line = cleanLine(CharacterCoding.html2unicode(Tag.stripAllTags(scraper.content.getChars())));
+        final StringBuilder altakk = new StringBuilder();
+        for (final ImageEntry ie: scraper.images) {
             if (linkurl != null) {
                 if (ie.alt() != null) altakk.append(ie.alt().trim()).append(' ');
                 linkurl.setImageURL(ie.url());
-                AnchorURL a = new AnchorURL(linkurl);
+                final AnchorURL a = new AnchorURL(linkurl);
                 a.setTextProperty(line);
                 a.setImageAlt(ie.alt());
                 a.setImageURL(ie.url());
@@ -740,7 +741,7 @@ public class Scraper {
     public List<String> getTitles() {
 
         // some documents have a title tag as meta tag
-        String s = this.metas.get("title");
+        final String s = this.metas.get("title");
         if (s != null && s.length() > 0) {
             this.titles.add(s);
         }
@@ -756,7 +757,7 @@ public class Scraper {
         }
 
         // extract headline from file name
-        ArrayList<String> t = new ArrayList<String>();
+        final ArrayList<String> t = new ArrayList<String>();
         t.addAll(this.titles);
         return t;
     }
@@ -827,7 +828,7 @@ public class Scraper {
 
     public MultiProtocolURL[] getFlash() {
         String ext;
-        ArrayList<MultiProtocolURL> f = new ArrayList<MultiProtocolURL>();
+        final ArrayList<MultiProtocolURL> f = new ArrayList<MultiProtocolURL>();
         for (final MultiProtocolURL url: this.anchors) {
             ext = MultiProtocolURL.getFileExtension(url.getFileName());
             if (ext == null) continue;
@@ -957,7 +958,7 @@ public class Scraper {
     public List<String> getDescriptions() {
         String s = this.metas.get("description");
         if (s == null) s = this.metas.get("dc.description");
-        List<String> descriptions = new ArrayList<String>();
+        final List<String> descriptions = new ArrayList<String>();
         if (s == null) return descriptions;
         descriptions.add(s);
         return descriptions;
@@ -1042,29 +1043,64 @@ public class Scraper {
     }
 
     public Date getDate() {
+        return getDate(this.metas, this.timezoneOffset);
+    }
+
+    public static Date getDate(final CaseInsensitiveMap<String> metas, final int timezoneOffset) {
         String content;
 
         // <meta name="date" content="YYYY-MM-DD..." />
-        content = this.metas.get("date");
-        if (content != null) try {return ISO8601Formatter.FORMATTER.parse(content, this.timezoneOffset).getTime();} catch (ParseException e) {}
+        content = metas.get("date");
+        if (content != null) try {return getDate(content, timezoneOffset);} catch (final ParseException e) {}
 
         // <meta name="DC.date.modified" content="YYYY-MM-DD" />
-        content = this.metas.get("dc.date.modified");
-        if (content != null) try {return ISO8601Formatter.FORMATTER.parse(content, this.timezoneOffset).getTime();} catch (ParseException e) {}
+        content = metas.get("dc.date.modified");
+        if (content != null) try {return getDate(content, timezoneOffset);} catch (final ParseException e) {}
 
         // <meta name="DC.date.created" content="YYYY-MM-DD" />
-        content = this.metas.get("dc.date.created");
-        if (content != null) try {return ISO8601Formatter.FORMATTER.parse(content, this.timezoneOffset).getTime();} catch (ParseException e) {}
+        content = metas.get("dc.date.created");
+        if (content != null) try {return getDate(content, timezoneOffset);} catch (final ParseException e) {}
 
         // <meta name="DC.date" content="YYYY-MM-DD" />
-        content = this.metas.get("dc.date");
-        if (content != null) try {return ISO8601Formatter.FORMATTER.parse(content, this.timezoneOffset).getTime();} catch (ParseException e) {}
+        content = metas.get("dc.date");
+        if (content != null) try {return getDate(content, timezoneOffset);} catch (final ParseException e) {}
 
         // <meta name="DC:date" content="YYYY-MM-DD" />
-        content = this.metas.get("dc:date");
-        if (content != null) try {return ISO8601Formatter.FORMATTER.parse(content, this.timezoneOffset).getTime();} catch (ParseException e) {}
+        content = metas.get("dc:date");
+        if (content != null) try {return getDate(content, timezoneOffset);} catch (final ParseException e) {}
+
+        // <meta http-equiv="last-modified" content="YYYY-MM-DD" />
+        content = metas.get("last-modified");
+        if (content != null) try {return getDate(content, timezoneOffset);} catch (final ParseException e) {}
 
         return new Date();
+    }
+
+    public static Date getDate(final String content, final int timezoneOffset) throws ParseException {
+        // for some strange reason some dates are submitted as seconds or milliseconds; try to parse that
+        try {
+            final long d = Long.parseLong(content);
+            try {
+            	// try the number as seconds
+                final Date s = verifyDate(new Date(1000L * d));
+                return s;
+            } catch (final ParseException ee) {
+            	// try the number as milliseconds
+            	return verifyDate(new Date(d));
+            }
+        } catch (final NumberFormatException e) {
+            // we should expect that!
+        	// try the string as ISO 860
+            return verifyDate(ISO8601Formatter.FORMATTER.parse(content, timezoneOffset).getTime());
+        }
+    }
+
+    public static Date verifyDate(final Date date) throws ParseException {
+        final long millis = date.getTime();
+        if (millis <= 0) throw new ParseException("date is negative", 0);
+        final Date now = new Date();
+        if (date.after(now)) throw new ParseException("date is future", 0);
+        return date;
     }
 
     // parse location
@@ -1160,7 +1196,7 @@ public class Scraper {
     }
 
     public void print() {
-        for (String t: this.titles) {
+        for (final String t: this.titles) {
             System.out.println("TITLE    :" + t);
         }
         for (int i = 0; i < 4; i++) {
@@ -1191,5 +1227,14 @@ public class Scraper {
         // return result
         return sb.toString().trim();
     }
+
+    public static void main(final String[] args) {
+        // test getDate()
+        final CaseInsensitiveMap<String> testmeta = new CaseInsensitiveMap<>();
+        testmeta.put("Last-Modified","1648426480");
+        final Date date = getDate(testmeta, 0);
+        System.out.println(date.toString());
+    }
+
 }
 
