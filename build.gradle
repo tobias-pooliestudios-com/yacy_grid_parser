@@ -16,7 +16,6 @@ sourceSets {
     }
 }
 
-archivesBaseName = 'yacy_grid_parser'
 mainClassName = "net.yacy.grid.parser.Parser"
 applicationDefaultJvmArgs = ["-Xmx4g"]
 
@@ -38,12 +37,13 @@ repositories {
 
 jar {
     manifest {
-        attributes 'Main-Class': 'net.yacy.grid.parser.Parser'
+        attributes 'Main-Class': 'net.yacy.grid.crawler.Crawler'
     }
 }
 
 shadowJar {
     zip64 true
+    mergeServiceFiles()
     exclude 'data'
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
@@ -96,4 +96,3 @@ dependencies {
     implementation 'org.bouncycastle:bcprov-jdk16:1.+'
     implementation 'org.eclipse.rdf4j:rdf4j-model:3.7.7'
 }
-
