@@ -16,6 +16,7 @@ sourceSets {
     }
 }
 
+archivesBaseName = 'yacy_grid_parser'
 mainClassName = "net.yacy.grid.parser.Parser"
 applicationDefaultJvmArgs = ["-Xmx4g"]
 
