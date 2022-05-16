@@ -47,6 +47,11 @@ target/
 .settings
 .idea
 out
+*.log
 
 config-parser.properties
 log4j.properties
+
+# nix direnv setup #
+####################
+.direnv/
