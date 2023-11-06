@@ -70,6 +70,7 @@ import net.yacy.document.VocabularyScraper;
 import net.yacy.document.parser.html.ImageEntry;
 import net.yacy.document.parser.html.Scraper;
 import net.yacy.document.parser.html.Tokenizer;
+import net.yacy.document.parser.rdfa.RDFaRefiner;
 import net.yacy.grid.http.ClientConnection;
 import net.yacy.grid.tools.CommonPattern;
 import net.yacy.grid.tools.Logger;
@@ -414,9 +415,10 @@ public class htmlParser extends AbstractParser implements Parser {
         }
     }
 
-    public static String RDFa2JSONLDExpandString(final String url, final byte[] b) throws IOException {
+    public static String RDFa2JSONLDExpandString(final String url, final byte[] bytesHtmlInput) throws IOException {
+        final byte[] bytesHtmlInputRefined = RDFaRefiner.refine(bytesHtmlInput);
         final Any23 any23 = new Any23();
-        final ByteArrayDocumentSource ds = new ByteArrayDocumentSource(b, url, "text/html"); // text/html; application/xhtml+xml
+        final ByteArrayDocumentSource ds = new ByteArrayDocumentSource(bytesHtmlInputRefined, url, "text/html"); // text/html; application/xhtml+xml
         final ByteArrayOutputStream baos = new ByteArrayOutputStream();
         final JSONLDWriter th = new JSONLDWriter(baos);
         try {
