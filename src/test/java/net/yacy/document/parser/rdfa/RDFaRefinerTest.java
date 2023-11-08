@@ -28,7 +28,7 @@ class RDFaRefinerTest {
     }
 
     @Test
-    void filter_forbidden_tags_inclusive_content() {
+    void filter_not_allowed_xzufi_tags_inclusive_content() {
         String bytesHtmlInput = buildCompleteHtml(
             "<h2 property=\"leistungsbezeichnung\">" +
                 "<b>Kfz-Schein Änderung</b>" +
@@ -70,7 +70,7 @@ class RDFaRefinerTest {
     }
 
     @Test
-    void do_not_replace_already_set_content_attribute_even_if_there_are_malicious_code() {
+    void do_not_replace_already_set_content_attribute_with_not_allowed_xzufi_tags() {
         String bytesHtmlInput = buildCompleteHtml(
             "<h2 property=\"leistungsbezeichnung\" content=\"" +
                 "<b>Namensänderung</b>" +
@@ -96,7 +96,7 @@ class RDFaRefinerTest {
     }
 
     @Test
-    void allow_predefined_tags() {
+    void allow_xzufi_tags() {
         String bytesHtmlInput = buildCompleteHtml(
             "<div property=\"erforderlicheUnterlagen\">" +
                 allowedTagsExample() +
@@ -118,7 +118,7 @@ class RDFaRefinerTest {
     @Test
     void repair_invalid_html() {
         String bytesHtmlInput = buildCompleteHtml(
-            "<h2>" +
+            "<h2 property=\"leistungsbezeichnung\">" +
                 "<b>Kfz-Schein Änderung" +
             "</h2>"
         );
@@ -128,7 +128,7 @@ class RDFaRefinerTest {
 
 
         String bytesHtmlRefinedExpected = buildCompleteHtml(
-            "<h2>" +
+            "<h2 property=\"leistungsbezeichnung\" content=\"<b>Kfz-Schein Änderung</b>\">" +
                 "<b>Kfz-Schein Änderung</b>" +
             "</h2>"
         );
