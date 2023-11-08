@@ -24,9 +24,9 @@ public class RDFaRefiner {
             rdfaPropertyHtmlTag.attr("content", Jsoup.clean(rdfaPropertyHtmlTag.html(), createSafelist()));
         }
 
-        String refinedHtmlDocument = domDocument.outerHtml();
+        String refinedHtml = domDocument.outerHtml();
 
-        return refinedHtmlDocument.getBytes();
+        return refinedHtml.getBytes();
     }
 
     private static Safelist createSafelist() {
