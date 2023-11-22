@@ -1,6 +1,6 @@
 name: github-ci
 run-name: Run Github CI for Unittest
-on: [push]
+on: [push, pull_request]
 jobs:
   test-unit:
     runs-on: ubuntu-latest

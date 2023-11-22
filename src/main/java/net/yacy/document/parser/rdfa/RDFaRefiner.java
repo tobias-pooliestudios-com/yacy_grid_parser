@@ -13,8 +13,8 @@ public class RDFaRefiner {
         Elements rdfaPropertyHtmlTags = domDocument.getElementsByAttribute("property");
 
         for (Element rdfaPropertyHtmlTag: rdfaPropertyHtmlTags) {
-            int countAllLevelChildrenWithoutItself = rdfaPropertyHtmlTag.getElementsByAttribute("property").size() - 1;
-            if (countAllLevelChildrenWithoutItself > 0) {
+
+            if (hasRDFaChildrenOnInfiniteLevel(rdfaPropertyHtmlTag)) {
                 continue;
             }
 
@@ -28,6 +28,12 @@ public class RDFaRefiner {
         String refinedHtml = domDocument.outerHtml();
 
         return refinedHtml.getBytes();
+    }
+
+    private static boolean hasRDFaChildrenOnInfiniteLevel(Element rdfaPropertyHtmlTag) {
+        int countAllLevelChildrenWithoutItself = rdfaPropertyHtmlTag.getElementsByAttribute("property").size() - 1;
+
+        return countAllLevelChildrenWithoutItself > 0;
     }
 
     private static Safelist createSafelist() {
