@@ -215,6 +215,59 @@ class RDFaRefinerTest {
         assertEqualsExpectedWithRefined(bytesHtmlRefinedExpected, bytesHtmlInputRefined);
     }
 
+    @Test
+    void remove_only_not_allowed_attribute_on_a_tag() {
+        String bytesHtmlInput = buildCompleteHtml(
+            "<h2 property=\"erforderlicheUnterlagen\">" +
+                "<span property=\"unterlage\">" +
+                    "<b>Kfz-Schein Änderung</b>" +
+                    "<a href=\"https://www.publicplan.de/\" target=\"_blank\">Publicplan Site with https</a>" +
+                "</span>" +
+            "</h2>"
+        );
+
+
+        byte[] bytesHtmlInputRefined = RDFaRefiner.refine(bytesHtmlInput.getBytes());
+
+
+        String bytesHtmlRefinedExpected = buildCompleteHtml(
+            "<h2 property=\"erforderlicheUnterlagen\">" +
+                "<span property=\"unterlage\" content=\"<b>Kfz-Schein Änderung</b>" + "<a href=\"https://www.publicplan.de/\">Publicplan Site with https</a>".replaceAll("\"", "&quot;") + "\">" +
+                    "<b>Kfz-Schein Änderung</b>" +
+                    "<a href=\"https://www.publicplan.de/\" target=\"_blank\">Publicplan Site with https</a>" +
+                "</span>" +
+            "</h2>"
+        );
+        assertEqualsExpectedWithRefined(bytesHtmlRefinedExpected, bytesHtmlInputRefined);
+    }
+
+    @Test
+    void not_set_content_of_a_parent_property_when_there_are_some_tags_between_parent_and_child_property_tags() {
+        String bytesHtmlInput = buildCompleteHtml(
+            "<h2 property=\"erforderlicheUnterlagen\">" +
+                "<span class=\"middle-tag-without-rdfa-property\">" +
+                    "<span property=\"unterlage\">" +
+                        "<b>Kfz-Schein Änderung</b>" +
+                    "</span>" +
+                "</span>" +
+            "</h2>"
+        );
+
+
+        byte[] bytesHtmlInputRefined = RDFaRefiner.refine(bytesHtmlInput.getBytes());
+
+
+        String bytesHtmlRefinedExpected = buildCompleteHtml(
+            "<h2 property=\"erforderlicheUnterlagen\">" +
+                "<span class=\"middle-tag-without-rdfa-property\">" +
+                    "<span property=\"unterlage\" content=\"<b>Kfz-Schein Änderung</b>\">" +
+                        "<b>Kfz-Schein Änderung</b>" +
+                    "</span>" +
+                "</span>" +
+            "</h2>"
+        );
+        assertEqualsExpectedWithRefined(bytesHtmlRefinedExpected, bytesHtmlInputRefined);
+    }
 
     private void assertEqualsExpectedWithRefined(String bytesHtmlRefinedExpected, byte[] bytesHtmlInputRefined) {
         assertEquals(

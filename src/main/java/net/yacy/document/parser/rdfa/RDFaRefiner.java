@@ -13,7 +13,8 @@ public class RDFaRefiner {
         Elements rdfaPropertyHtmlTags = domDocument.getElementsByAttribute("property");
 
         for (Element rdfaPropertyHtmlTag: rdfaPropertyHtmlTags) {
-            if (rdfaPropertyHtmlTag.children().hasAttr("property")) {
+            int countAllLevelChildrenWithoutItself = rdfaPropertyHtmlTag.getElementsByAttribute("property").size() - 1;
+            if (countAllLevelChildrenWithoutItself > 0) {
                 continue;
             }
 
